@@ -171,10 +171,18 @@ export function getDaysBetween(startDate, endDate) {
  * @returns {Array} 排序后的最佳游戏日数组
  */
 export function getBestDays(data, count = 3) {
-  if (!data || !Array.isArray(data)) return [];
+  if (!data || !Array.isArray(data)) {
+    return [];
+  }
 
-  return data
-    .filter(item => item.win_count !== undefined && item.count) // 只要有游戏记录的天
+  // 过滤条件：只要有游戏记录和胜场记录就行
+  const filteredData = data.filter(item => {
+    const hasCount = item.count && item.count > 0;
+    const hasWinCount = item.win_count !== undefined && item.win_count !== null;
+    return hasCount && hasWinCount;
+  });
+
+  const result = filteredData
     .map(item => ({
       ...item,
       loseCount: (item.count || 0) - (item.win_count || 0), // 败场数
@@ -182,6 +190,8 @@ export function getBestDays(data, count = 3) {
     }))
     .sort((a, b) => b.netWin - a.netWin) // 按净胜场数降序排列
     .slice(0, count);
+
+  return result;
 }
 
 /**
@@ -290,6 +300,245 @@ export function getMostWinsDays(data, count = 3) {
     }))
     .sort((a, b) => b.win_count - a.win_count) // 按胜场数降序排列
     .slice(0, count);
+}
+
+/**
+ * 五行分析相关函数
+ */
+
+/**
+ * 获取日期的主要五行属性（基于日柱）
+ * @param {number} timestamp 时间戳
+ * @returns {string} 主要五行属性
+ */
+export function getDayMainWuxing(timestamp) {
+  const sixtyWordStr = getSixtyWord(timestamp);
+  const parsed = parseSixtyWord(sixtyWordStr);
+  if (!parsed) return null;
+
+  // 以日柱天干为主要五行
+  const dayTiangan = parsed.day.tiangan;
+  return TIANGAN_WUXING[dayTiangan];
+}
+
+/**
+ * 分析五行胜率
+ * @param {Array} gameData 游戏数据
+ * @param {Array} targetDays 目标日期数组
+ * @param {number} gameLimit 分析的游戏场数限制，默认10场
+ * @returns {Object} 五行胜率分析结果
+ */
+export function analyzeFiveElementWinRate(gameData, targetDays, gameLimit = 10) {
+  const wuxingStats = {
+    木: { wins: 0, total: 0 },
+    火: { wins: 0, total: 0 },
+    土: { wins: 0, total: 0 },
+    金: { wins: 0, total: 0 },
+    水: { wins: 0, total: 0 },
+  };
+
+  targetDays.forEach(day => {
+    const mainWuxing = getDayMainWuxing(day.timestamp);
+    if (!mainWuxing) return;
+
+    // 取该日期的前gameLimit场游戏
+    const wins = Math.min(day.win_count || 0, gameLimit);
+    const total = Math.min(day.count || 0, gameLimit);
+
+    wuxingStats[mainWuxing].wins += wins;
+    wuxingStats[mainWuxing].total += total;
+  });
+
+  // 计算胜率
+  const result = {};
+  Object.keys(wuxingStats).forEach(wuxing => {
+    const stats = wuxingStats[wuxing];
+    result[wuxing] = {
+      wins: stats.wins,
+      total: stats.total,
+      winRate: stats.total > 0 ? ((stats.wins / stats.total) * 100).toFixed(1) : '0.0',
+      winRateNum: stats.total > 0 ? stats.wins / stats.total : 0,
+    };
+  });
+
+  return result;
+}
+
+/**
+ * 获取指定年月的所有日期
+ * @param {number} year 年份
+ * @param {number} month 月份 (1-12)
+ * @returns {Array} 日期数组，包含时间戳和五行信息
+ */
+export function getMonthDates(year, month) {
+  const dates = [];
+  const daysInMonth = new Date(year, month, 0).getDate();
+
+  for (let day = 1; day <= daysInMonth; day++) {
+    const date = new Date(year, month - 1, day);
+    const timestamp = Math.floor(date.getTime() / 1000);
+    const mainWuxing = getDayMainWuxing(timestamp);
+
+    dates.push({
+      date: `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`,
+      timestamp,
+      day,
+      weekday: date.getDay(),
+      mainWuxing,
+      sixtyWord: getSixtyWord(timestamp),
+    });
+  }
+
+  return dates;
+}
+
+/**
+ * 基于五行胜率推荐日期
+ * @param {Object} wuxingWinRates 五行胜率数据
+ * @param {Array} monthDates 月份日期数组
+ * @param {number} threshold 推荐阈值，默认0.6
+ * @returns {Object} 推荐结果
+ */
+export function recommendDatesByWuxing(wuxingWinRates, monthDates, threshold = 0.55) {
+  const goodDates = [];
+  const badDates = [];
+
+  console.log('推荐函数输入:', { wuxingWinRates, monthDatesCount: monthDates.length, threshold });
+
+  monthDates.forEach(dateInfo => {
+    if (!dateInfo.mainWuxing) {
+      console.log('跳过无五行的日期:', dateInfo.date);
+      return;
+    }
+
+    const wuxingData = wuxingWinRates[dateInfo.mainWuxing];
+    if (!wuxingData || wuxingData.total === 0) {
+      console.log('跳过无数据的五行:', dateInfo.mainWuxing, wuxingData);
+      return;
+    }
+
+    const winRate = wuxingData.winRateNum;
+    const recommendation = {
+      ...dateInfo,
+      winRate: wuxingData.winRate,
+      winRateNum: winRate,
+      confidence: wuxingData.total >= 5 ? 'high' : wuxingData.total >= 3 ? 'medium' : 'low',
+    };
+
+    console.log(
+      `日期 ${dateInfo.date} 五行 ${dateInfo.mainWuxing} 胜率 ${winRate} 阈值 ${threshold}`
+    );
+
+    if (winRate >= threshold) {
+      goodDates.push(recommendation);
+      console.log('推荐:', dateInfo.date);
+    } else if (winRate <= 1 - threshold) {
+      badDates.push(recommendation);
+      console.log('不推荐:', dateInfo.date);
+    } else {
+      console.log('中性:', dateInfo.date);
+    }
+  });
+
+  // 按胜率排序
+  goodDates.sort((a, b) => b.winRateNum - a.winRateNum);
+  badDates.sort((a, b) => a.winRateNum - b.winRateNum);
+
+  return {
+    goodDates: goodDates.slice(0, 10), // 最多推荐10个好日子
+    badDates: badDates.slice(0, 10), // 最多推荐10个需要避免的日子
+  };
+}
+
+/**
+ * 基于最佳和最差日子的五行数据推荐日期
+ * @param {Object} bestDaysWuxingStats 最佳日子的五行胜率数据
+ * @param {Object} worstDaysWuxingStats 最差日子的五行胜率数据
+ * @param {Array} monthDates 月份日期数组
+ * @param {number} goodThreshold 好日子推荐阈值，默认0.6
+ * @param {number} badThreshold 坏日子识别阈值，默认0.4
+ * @returns {Object} 推荐结果
+ */
+export function recommendDatesByBestWorstWuxing(
+  bestDaysWuxingStats,
+  worstDaysWuxingStats,
+  monthDates,
+  goodThreshold = 0.6,
+  badThreshold = 0.4
+) {
+  const goodDates = [];
+  const badDates = [];
+
+  console.log('综合推荐函数输入:', {
+    bestDaysWuxingStats,
+    worstDaysWuxingStats,
+    monthDatesCount: monthDates.length,
+    goodThreshold,
+    badThreshold,
+  });
+
+  monthDates.forEach(dateInfo => {
+    if (!dateInfo.mainWuxing) {
+      return;
+    }
+
+    const bestWuxingData = bestDaysWuxingStats[dateInfo.mainWuxing];
+    const worstWuxingData = worstDaysWuxingStats[dateInfo.mainWuxing];
+
+    // 计算综合评分
+    let score = 0.5; // 默认中性评分
+    let confidence = 'low';
+    let winRate = '50.0';
+    let source = '无数据';
+
+    // 如果在最佳日子数据中有该五行
+    if (bestWuxingData && bestWuxingData.total > 0) {
+      const bestWinRate = bestWuxingData.winRateNum;
+      if (bestWinRate >= goodThreshold) {
+        score = Math.max(score, bestWinRate);
+        winRate = bestWuxingData.winRate;
+        confidence =
+          bestWuxingData.total >= 5 ? 'high' : bestWuxingData.total >= 3 ? 'medium' : 'low';
+        source = '最佳日子';
+      }
+    }
+
+    // 如果在最差日子数据中有该五行
+    if (worstWuxingData && worstWuxingData.total > 0) {
+      const worstWinRate = worstWuxingData.winRateNum;
+      if (worstWinRate <= badThreshold) {
+        score = Math.min(score, worstWinRate);
+        winRate = worstWuxingData.winRate;
+        confidence =
+          worstWuxingData.total >= 5 ? 'high' : worstWuxingData.total >= 3 ? 'medium' : 'low';
+        source = '最差日子';
+      }
+    }
+
+    const recommendation = {
+      ...dateInfo,
+      winRate,
+      winRateNum: score,
+      confidence,
+      source,
+    };
+
+    // 推荐逻辑
+    if (score >= goodThreshold) {
+      goodDates.push(recommendation);
+    } else if (score <= badThreshold) {
+      badDates.push(recommendation);
+    }
+  });
+
+  // 按评分排序
+  goodDates.sort((a, b) => b.winRateNum - a.winRateNum);
+  badDates.sort((a, b) => a.winRateNum - b.winRateNum);
+
+  return {
+    goodDates: goodDates.slice(0, 10),
+    badDates: badDates.slice(0, 10),
+  };
 }
 
 /**

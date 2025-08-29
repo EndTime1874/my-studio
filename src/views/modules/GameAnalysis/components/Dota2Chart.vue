@@ -56,7 +56,14 @@
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { Icon } from '@iconify/vue';
 import * as echarts from 'echarts';
-import { calculateGameStats, getChartColor, formatNumber } from '../utils/tools';
+import {
+  calculateGameStats,
+  getChartColor,
+  formatNumber,
+  getSixtyWord,
+  parseSixtyWord,
+  WUXING_COLORS,
+} from '../utils/tools';
 import GameAnalysis from './GameAnalysis.vue';
 
 const props = defineProps({
@@ -102,251 +109,391 @@ const chartData = computed(() => {
 });
 
 // 图表配置
-const getBarChartOption = () => ({
-  title: {
-    text: `${props.year}年 Dota2 游戏频率`,
-    textStyle: {
-      color: 'var(--text-color)',
-      fontSize: 16,
-      fontWeight: 'bold',
-    },
-  },
-  tooltip: {
-    trigger: 'axis',
-    formatter: params => {
-      const data = params[0];
-      const item = props.data[data.dataIndex];
-      return `
-        <div style="padding: 8px;">
-          <div style="font-weight: bold; margin-bottom: 4px;">${item.dateCN}</div>
-          <div style="color: ${getChartColor(0)};">
-            <span style="display: inline-block; width: 10px; height: 10px; background: ${getChartColor(
-              0
-            )}; border-radius: 50%; margin-right: 6px;"></span>
-            游戏局数: ${data.value}
-          </div>
-        </div>
-      `;
-    },
-  },
-  xAxis: {
-    type: 'category',
-    data: chartData.value.map(item => item.dateDay),
-    axisLabel: {
-      color: 'var(--text-color-secondary)',
-      rotate: 45,
-    },
-  },
-  yAxis: {
-    type: 'value',
-    axisLabel: {
-      color: 'var(--text-color-secondary)',
-    },
-  },
-  series: [
-    {
-      data: chartData.value.map(item => item.value),
-      type: 'bar',
-      itemStyle: {
-        color: getChartColor(0),
+const getBarChartOption = () => {
+  const data = chartData.value;
+  console.log('柱状图数据:', data);
+
+  if (!data || data.length === 0) {
+    return {
+      title: {
+        text: '暂无数据',
+        textStyle: {
+          color: 'var(--text-color)',
+          fontSize: 16,
+          fontWeight: 'bold',
+        },
       },
-      emphasis: {
+      tooltip: {
+        trigger: 'axis',
+      },
+      xAxis: {
+        type: 'category',
+        data: [],
+        axisLabel: {
+          color: 'var(--text-color-secondary)',
+        },
+      },
+      yAxis: {
+        type: 'value',
+        axisLabel: {
+          color: 'var(--text-color-secondary)',
+        },
+      },
+      series: [{ type: 'bar', data: [] }],
+      grid: {
+        left: '3%',
+        right: '4%',
+        bottom: '15%',
+        containLabel: true,
+      },
+    };
+  }
+
+  return {
+    title: {
+      text: `${props.year}年 Dota2 游戏频率`,
+      textStyle: {
+        color: 'var(--text-color)',
+        fontSize: 16,
+        fontWeight: 'bold',
+      },
+    },
+    tooltip: {
+      trigger: 'axis',
+      formatter: params => {
+        console.log('柱状图tooltip触发，params:', params);
+        if (!params || !params[0]) return '无数据';
+        const dataItem = params[0];
+        const item = props.data[dataItem.dataIndex];
+        console.log('柱状图数据项:', item);
+        if (!item) return '数据项不存在';
+        return `${item.dateCN}<br/>游戏局数: ${item.count || 0}`;
+      },
+    },
+    xAxis: {
+      type: 'category',
+      data: data.map(item => item.dateDay),
+      axisLabel: {
+        color: 'var(--text-color-secondary)',
+        rotate: 45,
+      },
+    },
+    yAxis: {
+      type: 'value',
+      axisLabel: {
+        color: 'var(--text-color-secondary)',
+      },
+    },
+    series: [
+      {
+        data: data.map(item => item.value),
+        type: 'bar',
         itemStyle: {
-          color: getChartColor(1),
+          color: getChartColor(0),
+        },
+        emphasis: {
+          itemStyle: {
+            color: getChartColor(1),
+          },
         },
       },
+    ],
+    grid: {
+      left: '3%',
+      right: '4%',
+      bottom: '15%',
+      containLabel: true,
     },
-  ],
-  grid: {
-    left: '3%',
-    right: '4%',
-    bottom: '15%',
-    containLabel: true,
-  },
-});
+  };
+};
 
-const getLineChartOption = () => ({
-  title: {
-    text: `${props.year}年 Dota2 游戏趋势`,
-    textStyle: {
-      color: 'var(--text-color)',
-      fontSize: 16,
-      fontWeight: 'bold',
-    },
-  },
-  tooltip: {
-    trigger: 'axis',
-    formatter: params => {
-      const data = params[0];
-      const item = props.data[data.dataIndex];
-      return `
-        <div style="padding: 8px;">
-          <div style="font-weight: bold; margin-bottom: 4px;">${item.dateCN}</div>
-          <div style="color: ${getChartColor(2)};">
-            <span style="display: inline-block; width: 10px; height: 10px; background: ${getChartColor(
-              2
-            )}; border-radius: 50%; margin-right: 6px;"></span>
-            游戏局数: ${data.value}
-          </div>
-        </div>
-      `;
-    },
-  },
-  xAxis: {
-    type: 'category',
-    data: chartData.value.map(item => item.dateDay),
-    axisLabel: {
-      color: 'var(--text-color-secondary)',
-      rotate: 45,
-    },
-  },
-  yAxis: {
-    type: 'value',
-    axisLabel: {
-      color: 'var(--text-color-secondary)',
-    },
-  },
-  series: [
-    {
-      data: chartData.value.map(item => item.value),
-      type: 'line',
-      smooth: true,
-      itemStyle: {
-        color: getChartColor(2),
-      },
-      lineStyle: {
-        color: getChartColor(2),
-        width: 3,
-      },
-      areaStyle: {
-        color: {
-          type: 'linear',
-          x: 0,
-          y: 0,
-          x2: 0,
-          y2: 1,
-          colorStops: [
-            {
-              offset: 0,
-              color: getChartColor(2) + '40',
-            },
-            {
-              offset: 1,
-              color: getChartColor(2) + '10',
-            },
-          ],
-        },
-      },
-    },
-  ],
-  grid: {
-    left: '3%',
-    right: '4%',
-    bottom: '15%',
-    containLabel: true,
-  },
-});
+const getLineChartOption = () => {
+  const data = chartData.value;
+  console.log('折线图数据:', data);
 
-const getCalendarChartOption = () => ({
-  title: {
-    text: `${props.year}年 Dota2 游戏日历`,
-    textStyle: {
-      color: 'var(--text-color)',
-      fontSize: 16,
-      fontWeight: 'bold',
-    },
-  },
-  tooltip: {
-    formatter: params => {
-      const item = props.data.find(d => d.date === params.data[0]);
-      return `
-        <div style="padding: 8px;">
-          <div style="font-weight: bold; margin-bottom: 4px;">${
-            item?.dateCN || params.data[0]
-          }</div>
-          <div style="color: ${getChartColor(3)};">
-            游戏局数: ${params.data[1] || 0}
-          </div>
-        </div>
-      `;
-    },
-  },
-  calendar: {
-    range: props.year,
-    cellSize: ['auto', 20],
-    itemStyle: {
-      borderWidth: 1,
-      borderColor: 'var(--border-color)',
-    },
-    yearLabel: {
-      show: false,
-    },
-    monthLabel: {
-      color: 'var(--text-color-secondary)',
-    },
-    dayLabel: {
-      color: 'var(--text-color-secondary)',
-    },
-  },
-  series: [
-    {
-      type: 'heatmap',
-      coordinateSystem: 'calendar',
-      data: chartData.value.map(item => {
-        // 将时间戳转换为日期字符串格式 YYYY-MM-DD
-        const timestamp = parseInt(item.date) * 1000;
-        const date = new Date(timestamp);
-        const dateStr =
-          date.getFullYear() +
-          '-' +
-          String(date.getMonth() + 1).padStart(2, '0') +
-          '-' +
-          String(date.getDate()).padStart(2, '0');
-        return [dateStr, item.value];
-      }),
-      itemStyle: {
-        color: params => {
-          const value = params.data[1];
-          if (value === 0) return 'var(--bg-color-secondary)';
-          const intensity = Math.min(value / 10, 1);
-          return (
-            getChartColor(3) +
-            Math.floor(intensity * 255)
-              .toString(16)
-              .padStart(2, '0')
-          );
+  if (!data || data.length === 0) {
+    return {
+      title: {
+        text: '暂无数据',
+        textStyle: {
+          color: 'var(--text-color)',
+          fontSize: 16,
+          fontWeight: 'bold',
         },
       },
+      tooltip: {
+        trigger: 'axis',
+      },
+      xAxis: {
+        type: 'category',
+        data: [],
+        axisLabel: {
+          color: 'var(--text-color-secondary)',
+        },
+      },
+      yAxis: {
+        type: 'value',
+        axisLabel: {
+          color: 'var(--text-color-secondary)',
+        },
+      },
+      series: [{ type: 'line', data: [] }],
+      grid: {
+        left: '3%',
+        right: '4%',
+        bottom: '15%',
+        containLabel: true,
+      },
+    };
+  }
+
+  return {
+    title: {
+      text: `${props.year}年 Dota2 游戏趋势`,
+      textStyle: {
+        color: 'var(--text-color)',
+        fontSize: 16,
+        fontWeight: 'bold',
+      },
     },
-  ],
-});
+    tooltip: {
+      trigger: 'axis',
+      formatter: params => {
+        console.log('折线图tooltip触发，params:', params);
+        if (!params || !params[0]) return '无数据';
+        const dataItem = params[0];
+        const item = props.data[dataItem.dataIndex];
+        console.log('折线图数据项:', item);
+        if (!item) return '数据项不存在';
+        return `${item.dateCN}<br/>游戏局数: ${item.count || 0}`;
+      },
+    },
+    xAxis: {
+      type: 'category',
+      data: data.map(item => item.dateDay),
+      axisLabel: {
+        color: 'var(--text-color-secondary)',
+        rotate: 45,
+      },
+    },
+    yAxis: {
+      type: 'value',
+      axisLabel: {
+        color: 'var(--text-color-secondary)',
+      },
+    },
+    series: [
+      {
+        data: data.map(item => item.value),
+        type: 'line',
+        smooth: true,
+        itemStyle: {
+          color: getChartColor(2),
+        },
+        lineStyle: {
+          color: getChartColor(2),
+          width: 3,
+        },
+        areaStyle: {
+          color: {
+            type: 'linear',
+            x: 0,
+            y: 0,
+            x2: 0,
+            y2: 1,
+            colorStops: [
+              {
+                offset: 0,
+                color: getChartColor(2) + '40',
+              },
+              {
+                offset: 1,
+                color: getChartColor(2) + '10',
+              },
+            ],
+          },
+        },
+      },
+    ],
+    grid: {
+      left: '3%',
+      right: '4%',
+      bottom: '15%',
+      containLabel: true,
+    },
+  };
+};
+
+const getCalendarChartOption = () => {
+  const data = chartData.value;
+  console.log('日历图数据:', data);
+
+  if (!data || data.length === 0) {
+    return {
+      title: {
+        text: '暂无数据',
+        textStyle: {
+          color: 'var(--text-color)',
+          fontSize: 16,
+          fontWeight: 'bold',
+        },
+      },
+      tooltip: {
+        formatter: () => '暂无数据',
+      },
+      calendar: {
+        range: props.year,
+        cellSize: ['auto', 20],
+        yearLabel: {
+          show: false,
+        },
+        monthLabel: {
+          color: 'var(--text-color-secondary)',
+        },
+        dayLabel: {
+          color: 'var(--text-color-secondary)',
+        },
+      },
+      series: [{ type: 'heatmap', coordinateSystem: 'calendar', data: [] }],
+    };
+  }
+
+  return {
+    title: {
+      text: `${props.year}年 Dota2 游戏日历`,
+      textStyle: {
+        color: 'var(--text-color)',
+        fontSize: 16,
+        fontWeight: 'bold',
+      },
+    },
+    tooltip: {
+      formatter: params => {
+        console.log('日历图tooltip触发，params:', params);
+        if (!params || !params.data) return '无数据';
+        const item = props.data.find(d => d.date === params.data[0]);
+        console.log('日历图数据项:', item);
+        if (!item) return '数据项不存在';
+        return `${item.dateCN}<br/>游戏局数: ${item.count || 0}`;
+      },
+    },
+    calendar: {
+      range: props.year,
+      cellSize: ['auto', 20],
+      itemStyle: {
+        borderWidth: 1,
+        borderColor: 'var(--border-color)',
+      },
+      yearLabel: {
+        show: false,
+      },
+      monthLabel: {
+        color: 'var(--text-color-secondary)',
+      },
+      dayLabel: {
+        color: 'var(--text-color-secondary)',
+      },
+    },
+    series: [
+      {
+        type: 'heatmap',
+        coordinateSystem: 'calendar',
+        data: data.map(item => {
+          // 将时间戳转换为日期字符串格式 YYYY-MM-DD
+          const timestamp = parseInt(item.date) * 1000;
+          const date = new Date(timestamp);
+          const dateStr =
+            date.getFullYear() +
+            '-' +
+            String(date.getMonth() + 1).padStart(2, '0') +
+            '-' +
+            String(date.getDate()).padStart(2, '0');
+          return [dateStr, item.value];
+        }),
+        itemStyle: {
+          color: params => {
+            const value = params.data[1];
+            if (value === 0) return 'var(--bg-color-secondary)';
+            const intensity = Math.min(value / 10, 1);
+            return (
+              getChartColor(3) +
+              Math.floor(intensity * 255)
+                .toString(16)
+                .padStart(2, '0')
+            );
+          },
+        },
+      },
+    ],
+  };
+};
 
 // 方法
-const initChart = () => {
-  if (!chartRef.value) return;
+const createDetailedTooltip = item => {
+  console.log('创建tooltip，数据:', item);
+  if (!item) {
+    console.log('没有数据项');
+    return '没有数据';
+  }
 
-  chartInstance.value = echarts.init(chartRef.value);
-  updateChart();
+  // 简单测试版本
+  return `${item.dateCN || '未知日期'}<br/>局数: ${item.count || 0}<br/>胜场: ${
+    item.win_count || 0
+  }`;
+};
+
+const initChart = () => {
+  if (!chartRef.value) {
+    console.warn('图表容器未找到，跳过初始化');
+    return;
+  }
+
+  try {
+    // 如果已存在实例，先销毁
+    if (chartInstance.value) {
+      chartInstance.value.dispose();
+    }
+
+    console.log('初始化图表实例');
+    chartInstance.value = echarts.init(chartRef.value);
+    updateChart();
+  } catch (error) {
+    console.error('图表初始化失败:', error);
+  }
 };
 
 const updateChart = () => {
-  if (!chartInstance.value) return;
-
-  let option;
-  switch (currentView.value) {
-    case 'line':
-      option = getLineChartOption();
-      break;
-    case 'calendar':
-      option = getCalendarChartOption();
-      chartHeight.value = 300;
-      break;
-    default:
-      option = getBarChartOption();
-      chartHeight.value = 400;
+  if (!chartInstance.value) {
+    console.warn('图表实例不存在，跳过更新');
+    return;
   }
 
-  chartInstance.value.setOption(option, true);
+  console.log('开始更新图表，当前视图:', currentView.value);
+  console.log('传入数据:', props.data);
+
+  let option;
+  try {
+    switch (currentView.value) {
+      case 'line':
+        option = getLineChartOption();
+        break;
+      case 'calendar':
+        option = getCalendarChartOption();
+        chartHeight.value = 300;
+        break;
+      default:
+        option = getBarChartOption();
+        chartHeight.value = 400;
+    }
+
+    console.log('设置图表选项:', option);
+    chartInstance.value.setOption(option, {
+      notMerge: true,
+      replaceMerge: ['series', 'xAxis', 'yAxis', 'calendar'],
+    });
+  } catch (error) {
+    console.error('图表更新失败:', error);
+  }
 };
 
 const resizeChart = () => {

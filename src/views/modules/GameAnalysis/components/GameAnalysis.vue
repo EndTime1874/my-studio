@@ -23,6 +23,20 @@
           </select>
         </div>
       </div>
+
+      <div class="analysis-footer">
+        <div class="footer-controls">
+          <label class="fortune-toggle">
+            <input type="checkbox" v-model="showFortune" />
+            <span>显示天干地支</span>
+          </label>
+
+          <button class="analysis-btn" @click="showFiveElementAnalysis = true">
+            <Icon icon="mingcute:yinyang-fill" width="24" height="24" />
+            五行分析推荐
+          </button>
+        </div>
+      </div>
     </div>
 
     <div class="analysis-content">
@@ -156,18 +170,20 @@
       </div>
     </div>
 
-    <div class="analysis-footer">
-      <label class="fortune-toggle">
-        <input type="checkbox" v-model="showFortune" />
-        <span>显示天干地支</span>
-      </label>
-    </div>
+    <!-- 五行分析弹窗 -->
+    <FiveElementAnalysis
+      :visible="showFiveElementAnalysis"
+      :data="props.data"
+      :year="props.year"
+      @close="showFiveElementAnalysis = false"
+    />
   </div>
 </template>
 
 <script setup>
 import { ref, computed, watch } from 'vue';
 import { Icon } from '@iconify/vue';
+import FiveElementAnalysis from './FiveElementAnalysis.vue';
 import {
   getBestDays,
   getWorstDays,
@@ -194,6 +210,7 @@ const props = defineProps({
 const displayCount = ref(3);
 const sortType = ref('best'); // 'best' 或 'worst'
 const showFortune = ref(true);
+const showFiveElementAnalysis = ref(false);
 
 // 计算属性
 const sortedDays = computed(() => {
@@ -327,6 +344,7 @@ watch(
   gap: var(--spacing-lg);
   align-items: center;
   flex-wrap: wrap;
+  margin-bottom: var(--spacing);
 }
 
 .control-group {
@@ -586,6 +604,16 @@ watch(
   .column-label {
     font-size: 10px;
   }
+
+  .footer-controls {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--spacing-sm);
+  }
+
+  .analysis-btn {
+    justify-content: center;
+  }
 }
 
 /* 暗色主题适配 */
@@ -629,9 +657,16 @@ watch(
 }
 
 .analysis-footer {
-  padding: var(--spacing);
+  padding-top: var(--spacing);
   border-top: 1px solid var(--border-color);
   background: var(--bg-color-secondary);
+}
+
+.footer-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing);
 }
 
 .fortune-toggle {
@@ -645,6 +680,31 @@ watch(
 
 .fortune-toggle input[type='checkbox'] {
   margin: 0;
+}
+
+.analysis-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: linear-gradient(135deg, var(--primary-color), var(--primary-color-hover));
+  color: white;
+  border: none;
+  border-radius: var(--radius);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--transition);
+  box-shadow: var(--shadow-sm);
+}
+
+.analysis-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow);
+}
+
+.analysis-btn:active {
+  transform: translateY(0);
 }
 
 /* 响应式设计 */
